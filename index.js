@@ -37,7 +37,7 @@ async function start() {
                 const visits = await client.get('visits');
 
                 // Return current number
-                res.send('Number of visitor is ' + visits);
+                res.send('Number of visitor = ' + visits);
 
                 // Increment for next visit
                 await client.set('visits', parseInt(visits) + 1);

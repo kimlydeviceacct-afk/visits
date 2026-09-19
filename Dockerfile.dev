@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1
+
+ARG NODE_VERSION=22
+
+# ============================================================
+# Stage 1 - Production dependencies only
+# ============================================================
+FROM node:${NODE_VERSION}-alpine AS deps
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --omit=dev --no-audit --no-fund
+
+
+# ============================================================
+# Stage 2 - Runtime (non-root)
+# ============================================================
+FROM node:${NODE_VERSION}-alpine AS production
+
+ENV NODE_ENV=production
+
+# Must match the port your index.js listens on (and nginx.conf's upstream)
+ENV PORT=8081
+
+WORKDIR /app
+
+# Dependencies from stage 1, then app source (node_modules is
+# excluded by .dockerignore so it can't overwrite the installed one)
+COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+COPY --chown=node:node . .
+
+# The official node image ships with an unprivileged "node" user
+USER node
+
+EXPOSE 8081
+
+# TCP check on purpose: hitting "/" would increment a visit counter
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD node -e "const s=require('net').connect(process.env.PORT||8081,'127.0.0.1');s.on('connect',()=>process.exit(0));s.on('error',()=>process.exit(1))"
+
+CMD ["node", "index.js"]
